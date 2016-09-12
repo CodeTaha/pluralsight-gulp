@@ -73,18 +73,30 @@ gulp.task('inject', ['wiredep', 'styles', 'templatecache'], function(){
 
 });
 
-gulp.task('optimize', ['inject'], function() {
+gulp.task('optimize', ['inject', 'fonts', 'images'], function() {
   var assets, templateCache;
   log('Optimizing the javascript,css,html');
   templateCache = config.temp + config.templateCache.file;
   assets = $.useref({
     searchPath: './'
   });
-  return gulp.src(config.index).pipe($.plumber()).pipe($.inject(gulp.src(templateCache, {
-    read: false
-  }), {
-    starttag: '<!-- inject:template:js -->'
-  })).pipe(assets).pipe(gulp.dest(config.build));
+  var indexHtmlFilter = $.filter(['**/*', '!**/index.html'], { restore: true });
+  return gulp.src(config.index)
+  		.pipe($.plumber())
+  		.pipe($.inject(gulp.src(templateCache, {read: false}), {
+    		starttag: '<!-- inject:template:js -->'
+  		}))
+  		.pipe(assets)
+        .pipe($.if('*.css', $.csso()))
+        .pipe($.if('**/app.js', $.ngAnnotate()))
+  		.pipe($.if('*.js', $.uglify()))
+  		.pipe(indexHtmlFilter)
+  		.pipe($.rev()) //Rename concatenated files but not index.html
+  		.pipe(indexHtmlFilter.restore)
+  		.pipe($.revReplace())
+  		.pipe(gulp.dest(config.build))
+  		.pipe($.rev.manifest())
+  		.pipe(gulp.dest(config.build));
 });
 
 gulp.task('less-watcher', function(){
@@ -138,10 +150,56 @@ gulp.task('serve-dev', ['inject'], function() {
 	serve(true /* isDev */);
 });
 
-gulp.task('hello', function() {
-	
+// for testing
+gulp.task('test', ['templatecache'], function(done) {
+	startTests(true /* singleRun */, done);
+});
+
+gulp.task('bump', function() {
+	/**
+	* gulp bump --version=2.3.4
+	* OR
+	* gulp bump --type=major/minor
+	*/
+	var msg = 'Bumping versions';
+	var type = args.type;
+	var version = args.version;
+	var options = {};
+	if(version){
+		options.version = version;
+		msg += ' to ' + version;
+	} else {
+		options.type = type;
+		msg += ' for a ' + type;
+	}
+	log(msg);
+	return gulp
+		.src(config.packages)
+		.pipe($.print())
+		.pipe($.bump(options))
+		.pipe(gulp.dest(config.root));
 });
 //////
+function startTests(singleRun, done) {
+	var karma = require('karma').server;
+	var excludeFiles = [];
+	var serverSpecs = config.serverIntegrationSpecs;
+	excludeFiles = serverSpecs;
+	karma.start({
+		configFile: __dirname + '/karma.conf.js',
+		exclude: excludeFiles,
+		singleRun: !!singleRun
+	}, karmaCompleted);
+
+	function karmaCompleted(karmaResult) {
+		log('Karma Completed!');
+		if(karmaResult === 1) {
+			done('Karma:tests failed with code ' + karmaResult);
+		} else {
+			done();
+		}
+	}
+}
 function serve(isDev) {
 	var nodeOptions = {
 		script: config.nodeServer,
@@ -164,7 +222,7 @@ function serve(isDev) {
 		})
 		.on('start', function(ev) {
 			log($.util.colors.green('*** NODEMON STARTED ***'));
-			startBrowserSync();
+			startBrowserSync(isDev);
 		})
 		.on('crash', function() {
 			log($.util.colors.red('*** NODEMON CRASHED!!! ***'));
@@ -179,46 +237,57 @@ function changeEvent(event) {
 	log('File ' + event.path.replace(srcPattern, '')+ ' ' + event.type);
 }
 
-function startBrowserSync(){
+function startBrowserSync(isDev){
 	if(args.nosync || browserSync.active){
 		return;
-	} else {
-		log('Starting Browser-Sync on port ' + port);
-		
+	} 
+	log('Starting Browser-Sync on port ' + port);
+	
+	if(isDev) {
 		gulp.watch([config.less], ['styles'])
 			.on('change', function(event) {
 				changeEvent(event);
 			});
-
-		var options = {
-			proxy: 'localhost:' + port,
-			port: 3000,
-			files: [
-				config.client + '**/*.*',
-				'!' + config.less,
-				config.temp + '**/*.css'
-			],
-			ghostMode: {
-				clicks: true,
-				location: false,
-				forms: true,
-				scroll: true
-			},
-			injectCHanges: true,
-			logFileChanges: true,
-			logLevel: 'debug',
-			logPrefix: 'glp-patterns',
-			notify: true,
-			reloadDelay: 0
-		};
-
-		browserSync(options);
+	} else {
+		gulp.watch([config.less, config.js, config.html], ['optimize', browserSync.reload])
+			.on('change', function(event) {
+				changeEvent(event);
+			});
 	}
+
+	var options = {
+		proxy: 'localhost:' + port,
+		port: 3000,
+		files: isDev ? [
+			config.client + '**/*.*',
+			'!' + config.less,
+			config.temp + '**/*.css'
+		] : [],
+		ghostMode: {
+			clicks: true,
+			location: false,
+			forms: true,
+			scroll: true
+		},
+		injectCHanges: true,
+		logFileChanges: true,
+		logLevel: 'debug',
+		logPrefix: 'glp-patterns',
+		notify: true,
+		reloadDelay: 0
+	};
+
+	browserSync(options);
+
 }
 
 function clean(path, done){
 	log('Cleaning ' + $.util.colors.yellow(path));
-	del(path).then(done());
+	//del(path).then(done());
+	del(path).then(paths => {
+		console.log('Deleted files and folders:\n' + $.util.colors.yellow(paths.join('\n')));
+		done();
+	});
 }
 
 function log(msg){

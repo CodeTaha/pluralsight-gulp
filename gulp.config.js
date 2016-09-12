@@ -1,9 +1,12 @@
 module.exports = function(){
 	var client = './src/client/',
 		clientApp = client+'app/',
+		report = './report/',
 		temp =  './.tmp/',
-		server = './src/server/';
-
+		server = './src/server/',
+		root = './';
+		var wiredep = require('wiredep');
+		var bowerFiles = wiredep({devDependencies: true})['js'];
 	var config = {
 		/**
 		* File paths
@@ -15,6 +18,7 @@ module.exports = function(){
 		build: './build/', 
 		client: client,
 		fonts: './bower_components/font-awesome/fonts/**/*.*',
+		html: clientApp + '**/*.html',
 		htmltemplates: clientApp + '**/*.html',
 		images: client + 'images/**/*.*',
 		index: client + 'index.html',
@@ -25,6 +29,7 @@ module.exports = function(){
 		],
 		less: client + 'styles/styles.less',
 		css: temp + 'styles.css',
+		root: root,
 		server: server,
 		temp: temp,
 
@@ -53,7 +58,16 @@ module.exports = function(){
 			directory: './bower_components',
 			ignorePath: '../..'
 		},	
-		
+		packages: [
+			'./package.json',
+			'./bower.json'
+		],
+		/*
+		* Karma and testing settings
+		*/
+		specHelpers: [client + 'test-helpers/*.js'],
+		serverIntegrationSpecs: [client + 'tests/server-integration/**/*.spec.js'],
+		report: report,
 		/*
 		* Node Settings for server
 		*/	
@@ -69,5 +83,32 @@ module.exports = function(){
 
 		return options;
 	};
+	config.karma = getKarmaOptions();
 	return config;
+
+	////////////
+	function getKarmaOptions() {
+		var options = {
+			files: [].concat(
+				bowerFiles,
+				config.specHelpers,
+				client + '**/*.module.js',
+				client + '**/*.js',
+				temp + config.templateCache.file,
+				config.serverIntegrationSpecs
+			),
+			exclude: [],
+			coverage: {
+				dir: report + 'coverage',
+				reporters: [
+					{type:'html', subdir: 'report-html'},
+					{type: 'lcov', subdir: 'report-lcov'},
+					{type: 'text-summary'}
+				]
+			},
+			preprocessors: {}
+		};
+		options.preprocessors[clientApp + '**/!(*.spec)+(.js)'] = ['coverage'];
+		return options;
+	}
 };
