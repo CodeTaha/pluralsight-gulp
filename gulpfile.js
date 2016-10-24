@@ -1,8 +1,10 @@
-var gulp = require('gulp'),
-	$ = require('gulp-load-plugins')({lazy:true}),
-	args = require('yargs').argv,
-	del= require('del'),
-	browserSync = require('browser-sync');
+var gulp		= require('gulp'),
+	$			= require('gulp-load-plugins')({lazy:true}),
+	args		= require('yargs').argv,
+	del			= require('del'),
+	browserSync	= require('browser-sync'),
+	path		= require('path'),
+	_ 			= require('lodash');
 
 var config = require('./gulp.config')();
 var port = process.env.PORT || config.defaultPort;
@@ -73,7 +75,20 @@ gulp.task('inject', ['wiredep', 'styles', 'templatecache'], function(){
 
 });
 
-gulp.task('optimize', ['inject', 'fonts', 'images'], function() {
+gulp.task('build', ['optimize', 'test', 'fonts', 'images'], function() {
+	log('Building Everything');
+
+	var msg = {
+		title: 'gulp build',
+		subtitle: 'Deployed to the build folder',
+		message: 'Running `gulp serve-build`'
+	};
+	del(config.temp);
+	log(msg);
+	notify(msg);
+});
+
+gulp.task('optimize', ['inject', 'test'], function() {
   var assets, templateCache;
   log('Optimizing the javascript,css,html');
   templateCache = config.temp + config.templateCache.file;
@@ -142,7 +157,7 @@ gulp.task('clean-code', function(done) {
 	clean(files, done);
 });
 
-gulp.task('serve-build', ['optimize'], function() {
+gulp.task('serve-build', ['build'], function() {
 	serve(false /* isDev */);
 });
 
@@ -151,8 +166,12 @@ gulp.task('serve-dev', ['inject'], function() {
 });
 
 // for testing
-gulp.task('test', ['templatecache'], function(done) {
+gulp.task('test', ['vet','templatecache'], function(done) {
 	startTests(true /* singleRun */, done);
+});
+
+gulp.task('autotest', ['vet','templatecache'], function(done) {
+	startTests(false /* singleRun */, done);
 });
 
 gulp.task('bump', function() {
@@ -237,6 +256,17 @@ function changeEvent(event) {
 	log('File ' + event.path.replace(srcPattern, '')+ ' ' + event.type);
 }
 
+function notify(options) {
+	var notifier = require('node-notifier');
+	var notifyOptions = {
+		sound: 'Bottle',
+		contentImage: path.join(__dirname, 'gulp.png'),
+		icon: path.join(__dirname, 'gulp.png')
+	};
+	_.assign(notifyOptions, options);
+	notifier.notify(notifyOptions);
+}
+
 function startBrowserSync(isDev){
 	if(args.nosync || browserSync.active){
 		return;
@@ -284,7 +314,7 @@ function startBrowserSync(isDev){
 function clean(path, done){
 	log('Cleaning ' + $.util.colors.yellow(path));
 	//del(path).then(done());
-	del(path).then(paths => {
+	del(path).then(function(paths) {
 		console.log('Deleted files and folders:\n' + $.util.colors.yellow(paths.join('\n')));
 		done();
 	});

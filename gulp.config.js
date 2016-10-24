@@ -101,9 +101,9 @@ module.exports = function(){
 			coverage: {
 				dir: report + 'coverage',
 				reporters: [
-					{type:'html', subdir: 'report-html'},
-					{type: 'lcov', subdir: 'report-lcov'},
-					{type: 'text-summary'}
+					{type:'html', subdir: 'report-html'},// for browser
+					{type: 'lcov', subdir: 'report-lcov'},// for Jenkins etc
+					{type: 'text-summary'} // for console
 				]
 			},
 			preprocessors: {}
